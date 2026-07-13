@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy bird</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            background: #70c5ce;
+            border: 4px solid #333;
+            border-radius: 8px;
+        }
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        .hidden { display: none !important; }
+        h1 {
+            font-size: 32px;
+            color: #ffeb3b;
+            margin-bottom: 20px;
+            text-align: center;
+            text-shadow: 0 4px 8px rgba(0,0,0,0.5);
+            letter-spacing: 2px;
+        }
+        p {
+            color: #ddd;
+            font-size: 16px;
+            margin-bottom: 25px;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .btn {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 12px 35px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+        #scores-panel {
+            font-size: 22px;
+            margin-bottom: 20px;
+            line-height: 1.8;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="main-menu" class="screen">
+        <h1>CRV GAMES<br>FLAPPY BİRD</h1>
+        <p>Zıplamak için <b>BOŞLUK (SPACE)</b> tuşuna<br>veya <b>FARE SOL TIK</b>'a bas!</p>
+        <button class="btn" onclick="startGame()">OYUNU BAŞLAT</button>
+    </div>
+
+    <div id="game-over-menu" class="screen hidden">
+        <h1 style="color: #f44336;">OYUN BiTTi</h1>
+        <div id="scores-panel">
+            <div>Skorun: <span id="current-score-ui" style="color: #ffeb3b; font-weight: bold;">0</span></div>
+            <div>En Yüksek Skor: <span id="high-score-ui" style="color: #00aad4; font-weight: bold;">0</span></div>
+        </div>
+        <button class="btn" onclick="startGame()">YENiDEN DENE</button>
+    </div>
+
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let isGameRunning = false;
+    let score = 0;
+    // Yüksek skoru tarayıcı hafızasından çekiyoruz
+    let highScore = localStorage.getItem("omre_flappy_highscore") ? parseInt(localStorage.getItem("omre_flappy_highscore")) : 0;
+
+    // Kuş Fiziği ve Ölçüleri
+    let bird = {
+        x: 60,
+        y: 200,
+        width: 34,
+        height: 24,
+        gravity: 0.26,
+        velocity: 0,
+        jump: 4.8
+    };
+
+    // Engel (Boru) Ayarları
+    let pipes = [];
+    let pipeWidth = 64;
+    let pipeGap = 130; // Geçiş boşluğu (Burayı küçülterek oyunu zorlaştırabilirsin)
+    let pipeSpeed = 2.2;
+    let frameCount = 0;
+
+    // Kontrol Tetikleyicileri
+    window.addEventListener("keydown", (e) => {
+        if (e.code === "Space" && isGameRunning) {
+            jumpBird();
+        }
+    });
+
+    canvas.addEventListener("mousedown", (e) => {
+        if (isGameRunning && e.button === 0) {
+            jumpBird();
+        }
+    });
+
+    function jumpBird() {
+        bird.velocity = -bird.jump;
+    }
+
+    function startGame() {
+        document.getElementById("main-menu").classList.add("hidden");
+        document.getElementById("game-over-menu").classList.add("hidden");
+        
+        // Değerleri sıfırla ve yeni turu kur
+        score = 0;
+        bird.y = 200;
+        bird.velocity = 0;
+        pipes = [];
+        frameCount = 0;
+        isGameRunning = true;
+
+        generatePipe();
+    }
+
+    function generatePipe() {
+        let minHeight = 60;
+        let maxHeight = canvas.height - pipeGap - minHeight - 120; 
+        let topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
+
+        pipes.push({
+            x: canvas.width,
+            top: topHeight,
+            bottom: canvas.height - topHeight - pipeGap - 50,
+            passed: false
+        });
+    }
+
+    // Oyun Güncelleme Mantığı
+    function update() {
+        if (isGameRunning) {
+            frameCount++;
+
+            bird.velocity += bird.gravity;
+            bird.y += bird.velocity;
+
+            // Tavan veya Taban Çarpışma Kontrolü
+            if (bird.y + bird.height >= canvas.height - 50 || bird.y <= 0) {
+                gameOver();
+            }
+
+            // Belirli aralıklarla yeni boru ekle
+            if (frameCount % 110 === 0) {
+                generatePipe();
+            }
+
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= pipeSpeed;
+
+                // Kutu Çarpışma Algoritması (AABB)
+                if (
+                    bird.x < pipes[i].x + pipeWidth &&
+                    bird.x + bird.width > pipes[i].x &&
+                    (bird.y < pipes[i].top || bird.y + bird.height > canvas.height - 50 - pipes[i].bottom)
+                ) {
+                    gameOver();
+                }
+
+                // Skor Atlama Kontrolü
+                if (!pipes[i].passed && pipes[i].x + pipeWidth < bird.x) {
+                    score++;
+                    pipes[i].passed = true;
+                }
+
+                // Ekrandan çıkan boruyu sil
+                if (pipes[i].x + pipeWidth < 0) {
+                    pipes.splice(i, 1);
+                }
+            }
+        }
+
+        render();
+        requestAnimationFrame(update);
+    }
+
+    // Canvas Çizim Alanı
+    function render() {
+        // Arka Plan Gökyüzü
+        ctx.fillStyle = "#70c5ce";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Boruların Çizimi
+        ctx.fillStyle = "#73bf2e"; 
+        ctx.strokeStyle = "#538a1b"; 
+        ctx.lineWidth = 3;
+        for (let i = 0; i < pipes.length; i++) {
+            // Üst Kanat Boru
+            ctx.fillRect(pipes[i].x, 0, pipeWidth, pipes[i].top);
+            ctx.strokeRect(pipes[i].x, -5, pipeWidth, pipes[i].top + 5);
+
+            // Alt Kanat Boru
+            let bottomY = canvas.height - 50 - pipes[i].bottom;
+            ctx.fillRect(pipes[i].x, bottomY, pipeWidth, pipes[i].bottom);
+            ctx.strokeRect(pipes[i].x, bottomY, pipeWidth, pipes[i].bottom + 5);
+        }
+
+        // Alt Zemin (Çimenlik Alan)
+        ctx.fillStyle = "#ded895"; 
+        ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+        ctx.fillStyle = "#4caf50"; 
+        ctx.fillRect(0, canvas.height - 50, canvas.width, 14);
+
+        // Karakter Çizimi (Sevimli Flappy Figürü)
+        ctx.fillStyle = "#ffeb3b";
+        ctx.fillRect(bird.x, bird.y, bird.width, bird.height);
+        ctx.strokeStyle = "#e65100";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bird.x, bird.y, bird.width, bird.height);
+        
+        // Karakter Detayları (Göz ve Gaga)
+        ctx.fillStyle = "#000";
+        ctx.fillRect(bird.x + 22, bird.y + 4, 4, 4);
+        ctx.fillStyle = "#ff5722";
+        ctx.fillRect(bird.x + 30, bird.y + 9, 6, 6);
+
+        // Canlı Skor Göstergesi
+        if (isGameRunning) {
+            ctx.fillStyle = "white";
+            ctx.font = "bold 36px 'Segoe UI'";
+            ctx.textAlign = "center";
+            ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
+            ctx.shadowBlur = 4;
+            ctx.fillText(score, canvas.width / 2, 65);
+            ctx.shadowBlur = 0; 
+        }
+    }
+
+    function gameOver() {
+        isGameRunning = false;
+
+        // Yüksek rekor kırıldıysa yerel hafızaya işle
+        if (score > highScore) {
+            highScore = score;
+            localStorage.setItem("omre_flappy_highscore", highScore);
+        }
+
+        document.getElementById("current-score-ui").textContent = score;
+        document.getElementById("high-score-ui").textContent = highScore;
+        document.getElementById("game-over-menu").classList.remove("hidden");
+    }
+
+    // Döngüyü ilk kez başlat
+    update();
+</script>
+
+</body>
+</html>
